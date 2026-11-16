@@ -1,11 +1,11 @@
 {
   "total_viewers": 1,
-  "total_visits": 4,
+  "total_visits": 5,
   "viewers_by_ip": {
     "127.0.0.1": {
-      "visit_count": 4,
+      "visit_count": 5,
       "first_seen": "2026-11-16 17:24:58",
-      "last_seen": "2026-11-16 22:13:28"
+      "last_seen": "2026-11-16 23:21:09"
     }
   }
 }

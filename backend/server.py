@@ -1,15 +1,12 @@
 """
-Claims Intelligence Analytics Backend REST API
-FastAPI microservice serving executive metrics, temporal trends,
-component allocations, and data quality audits.
-No machine learning components.
+Claims Intelligence Analytics Backend Service Layer
+Provides backend metric computations, operational anomaly audits,
+dataset management, and IP-based viewer tracking.
+Runs 100% natively in Streamlit with zero FastAPI or Uvicorn dependencies.
 """
 
-from typing import Optional, Dict, Any, List
-from fastapi import FastAPI, Query, HTTPException, Request, UploadFile, File, Response
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import uvicorn
+from typing import Optional, Dict, Any, List, Tuple
+import os
 
 from .config import SERVER_HOST, SERVER_PORT, UPLOADED_DATA_FILE
 from .data_service import (
@@ -34,98 +31,47 @@ from .logger import get_backend_logger
 
 logger = get_backend_logger()
 
-# Initialize FastAPI instance
-app = FastAPI(
-    title="Claims Intelligence Analytics API",
-    description="Backend service providing insurance claims performance metrics, operational audits, and KPI analytics.",
-    version="2.0.0"
-)
-
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Logs incoming HTTP requests and response status codes."""
-    client_ip = request.headers.get("x-forwarded-for") or (request.client.host if request.client else "unknown")
-    if "," in client_ip:
-        client_ip = client_ip.split(",")[0].strip()
-    logger.info(f"Incoming {request.method} {request.url.path} from {client_ip}")
-    response = await call_next(request)
-    logger.info(f"Completed {request.method} {request.url.path} with status {response.status_code}")
-    return response
-
-
 # In-memory cached dataset reference
 df_master = None
 
 
-@app.on_event("startup")
-def startup_event():
-    """Initializes and preloads dataset on server launch."""
+def get_master_df(force_reload: bool = False):
+    """Initializes or retrieves the active master DataFrame."""
     global df_master
-    try:
-        df_master = load_dataset()
-        logger.info(f"Data ingestion successful: {len(df_master)} observations loaded.")
-    except Exception as e:
-        logger.error(f"Failed to load dataset on startup: {e}")
+    if df_master is None or force_reload:
+        try:
+            df_master = load_dataset()
+            logger.info(f"Data ingestion successful: {len(df_master)} observations loaded.")
+        except Exception as e:
+            logger.error(f"Failed to load dataset: {e}")
+    return df_master
 
 
-@app.get("/")
-def get_root():
-    """Root route detailing API status, capabilities, and documentation path."""
-    return {
-        "service": "Claims Intelligence Analytics API",
-        "status": "online",
-        "version": "2.0.0",
-        "records_loaded": len(df_master) if df_master is not None else 0,
-        "documentation": "/docs",
-        "endpoints": [
-            "/health",
-            "/api/filter-options",
-            "/api/kpis",
-            "/api/breakdown",
-            "/api/trends",
-            "/api/severities",
-            "/api/correlation",
-            "/api/audits",
-            "/api/viewers",
-            "/api/viewers/record",
-            "/api/dataset/status",
-            "/api/dataset/upload",
-            "/api/dataset/reset",
-            "/api/dataset/sample",
-            "/api/dataset/schema"
-        ]
-    }
-
-
-@app.get("/health")
-def health_check():
-    """Health check endpoint for service status verification."""
+def health_check() -> Dict[str, Any]:
+    """Health check for service status verification."""
+    df = get_master_df()
     return {
         "status": "healthy",
-        "dataset_ready": df_master is not None,
-        "record_count": len(df_master) if df_master is not None else 0
+        "engine": "Streamlit Core",
+        "dataset_ready": df is not None,
+        "record_count": len(df) if df is not None else 0
     }
 
 
-@app.get("/api/filter-options")
-def get_filter_options():
+def get_filter_options() -> Dict[str, Any]:
     """Returns unique categorical dimensions available for user filtering."""
-    if df_master is None:
-        raise HTTPException(status_code=503, detail="Dataset not initialized.")
+    df = get_master_df()
+    if df is None:
+        return {
+            "policy_states": ["All"],
+            "incident_severities": ["All"],
+            "incident_months": ["All"],
+            "fraud_statuses": ["All"]
+        }
 
-    states = ["All"] + sorted(df_master['policy_state'].dropna().unique().tolist())
-    severities = ["All"] + sorted(df_master['incident_severity'].dropna().unique().tolist())
-    months = ["All"] + sorted(df_master['incident_month'].dropna().unique().tolist())
+    states = ["All"] + sorted(df['policy_state'].dropna().unique().tolist())
+    severities = ["All"] + sorted(df['incident_severity'].dropna().unique().tolist())
+    months = ["All"] + sorted(df['incident_month'].dropna().unique().tolist())
     fraud_options = ["All", "Legitimate", "Fraudulent"]
 
     return {
@@ -136,19 +82,16 @@ def get_filter_options():
     }
 
 
-@app.get("/api/kpis")
 def get_kpis(
-    policy_state: Optional[str] = Query(None),
-    incident_severity: Optional[str] = Query(None),
-    fraud_status: Optional[str] = Query(None),
-    incident_month: Optional[str] = Query(None)
-):
+    policy_state: Optional[str] = None,
+    incident_severity: Optional[str] = None,
+    fraud_status: Optional[str] = None,
+    incident_month: Optional[str] = None
+) -> Dict[str, Any]:
     """Calculates executive KPIs based on active filter parameters."""
-    if df_master is None:
-        raise HTTPException(status_code=503, detail="Dataset not initialized.")
-
+    df = get_master_df()
     filtered_df = filter_dataset(
-        df_master,
+        df,
         policy_state=policy_state,
         incident_severity=incident_severity,
         fraud_status=fraud_status,
@@ -157,19 +100,16 @@ def get_kpis(
     return compute_executive_kpis(filtered_df)
 
 
-@app.get("/api/breakdown")
 def get_component_breakdown(
-    policy_state: Optional[str] = Query(None),
-    incident_severity: Optional[str] = Query(None),
-    fraud_status: Optional[str] = Query(None),
-    incident_month: Optional[str] = Query(None)
-):
+    policy_state: Optional[str] = None,
+    incident_severity: Optional[str] = None,
+    fraud_status: Optional[str] = None,
+    incident_month: Optional[str] = None
+) -> Dict[str, Any]:
     """Returns financial payout distribution across vehicle, injury, and property shares."""
-    if df_master is None:
-        raise HTTPException(status_code=503, detail="Dataset not initialized.")
-
+    df = get_master_df()
     filtered_df = filter_dataset(
-        df_master,
+        df,
         policy_state=policy_state,
         incident_severity=incident_severity,
         fraud_status=fraud_status,
@@ -178,18 +118,15 @@ def get_component_breakdown(
     return compute_component_breakdown(filtered_df)
 
 
-@app.get("/api/trends")
 def get_trends(
-    policy_state: Optional[str] = Query(None),
-    incident_severity: Optional[str] = Query(None),
-    fraud_status: Optional[str] = Query(None)
-):
+    policy_state: Optional[str] = None,
+    incident_severity: Optional[str] = None,
+    fraud_status: Optional[str] = None
+) -> Dict[str, Any]:
     """Returns monthly volume and 24-hour incident occurrence dynamics."""
-    if df_master is None:
-        raise HTTPException(status_code=503, detail="Dataset not initialized.")
-
+    df = get_master_df()
     filtered_df = filter_dataset(
-        df_master,
+        df,
         policy_state=policy_state,
         incident_severity=incident_severity,
         fraud_status=fraud_status
@@ -197,83 +134,56 @@ def get_trends(
     return compute_temporal_trends(filtered_df)
 
 
-@app.get("/api/severities")
 def get_severities(
-    policy_state: Optional[str] = Query(None),
-    incident_month: Optional[str] = Query(None)
-):
+    policy_state: Optional[str] = None,
+    incident_month: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """Returns claim volume, total outlay, and fraud rate per incident severity tier."""
-    if df_master is None:
-        raise HTTPException(status_code=503, detail="Dataset not initialized.")
-
+    df = get_master_df()
     filtered_df = filter_dataset(
-        df_master,
+        df,
         policy_state=policy_state,
         incident_month=incident_month
     )
     return compute_severity_metrics(filtered_df)
 
 
-@app.get("/api/correlation")
-def get_correlation():
+def get_correlation() -> Dict[str, Any]:
     """Returns Pearson correlation matrix for numerical attributes."""
-    if df_master is None:
-        raise HTTPException(status_code=503, detail="Dataset not initialized.")
-
-    return compute_correlation_matrix(df_master)
+    df = get_master_df()
+    return compute_correlation_matrix(df)
 
 
-@app.get("/api/audits")
-def get_audits():
+def get_audits() -> Dict[str, Any]:
     """Returns complete Module 6 operational anomaly and data quality audits."""
-    if df_master is None:
-        raise HTTPException(status_code=503, detail="Dataset not initialized.")
-
-    return run_full_anomaly_audit(df_master)
+    df = get_master_df()
+    return run_full_anomaly_audit(df)
 
 
-class ViewerRecordRequest(BaseModel):
-    ip: Optional[str] = None
-
-
-@app.post("/api/viewers/record")
-def record_viewer(req: Optional[ViewerRecordRequest] = None, request: Request = None):
+def record_viewer(client_ip: Optional[str] = None) -> Dict[str, Any]:
     """Records a viewer visit by client IP and returns updated visitor statistics."""
-    client_ip = None
-    if req and req.ip:
-        client_ip = req.ip
-    elif request:
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            client_ip = forwarded.split(",")[0].strip()
-        elif request.client and request.client.host:
-            client_ip = request.client.host
-
     return record_viewer_visit(client_ip or "127.0.0.1")
 
 
-@app.get("/api/viewers")
-def get_viewers():
-    """Returns total viewers (unique IP count), total visits, and IP breakdown."""
+def get_viewers() -> Dict[str, Any]:
+    """Returns total viewers (unique IP count) and total visits."""
     return get_viewer_stats()
 
 
-@app.get("/api/dataset/status")
-def get_dataset_status():
+def get_dataset_status() -> Dict[str, Any]:
     """Returns the status and record count of the currently active dataset."""
-    import os
+    df = get_master_df()
     is_custom = os.path.exists(UPLOADED_DATA_FILE) and os.path.getsize(UPLOADED_DATA_FILE) > 0
     return {
         "status": "ready",
         "is_custom": is_custom,
         "dataset_name": "Custom Uploaded Dataset" if is_custom else "Standard Production Portfolio",
-        "record_count": len(df_master) if df_master is not None else 0,
-        "column_count": len(df_master.columns) if df_master is not None else 0
+        "record_count": len(df) if df is not None else 0,
+        "column_count": len(df.columns) if df is not None else 0
     }
 
 
-@app.get("/api/dataset/schema")
-def get_dataset_schema():
+def get_dataset_schema() -> Dict[str, Any]:
     """Returns the list of required column fields and their descriptions for validation."""
     return {
         "required_columns_count": len(REQUIRED_COLUMNS),
@@ -282,70 +192,45 @@ def get_dataset_schema():
     }
 
 
-@app.get("/api/dataset/sample")
-def download_sample_dataset(format: Optional[str] = Query("csv")):
-    """Returns a downloadable sample format of the dataset (CSV or Excel) with matching columns."""
-    content, media_type, filename = get_sample_dataset_bytes(format_type=format or "csv")
-    return Response(
-        content=content,
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
+def download_sample_dataset(file_format: Optional[str] = "csv") -> Tuple[bytes, str, str]:
+    """Returns downloadable sample format of the dataset (CSV or Excel)."""
+    return get_sample_dataset_bytes(format_type=file_format or "csv")
 
 
-@app.post("/api/dataset/upload")
-async def upload_dataset(file: UploadFile = File(...)):
-    """
-    Accepts an uploaded CSV or Excel file, validates that all required columns match,
-    runs domain feature engineering, and updates the active dataset.
-    """
+def upload_dataset(file_bytes: bytes, filename: str) -> Dict[str, Any]:
+    """Validates and activates an uploaded custom dataset file."""
     global df_master
-    if not file.filename.lower().endswith(('.csv', '.xlsx', '.xls')):
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported file format. Please upload a CSV (.csv) or Excel (.xlsx, .xls) file."
-        )
-
-    try:
-        contents = await file.read()
-        processed_df = process_uploaded_bytes(contents, file.filename)
-        df_master = processed_df
-        logger.info(f"Custom dataset uploaded: '{file.filename}' with {len(df_master)} records.")
-        return {
-            "status": "success",
-            "message": f"Dataset '{file.filename}' successfully validated and activated.",
-            "filename": file.filename,
-            "records_loaded": len(df_master),
-            "columns_count": len(df_master.columns)
-        }
-    except ValueError as ve:
-        logger.warning(f"Dataset upload validation failure: {ve}")
-        raise HTTPException(status_code=422, detail=str(ve))
-    except Exception as e:
-        logger.error(f"Failed to process uploaded dataset: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to process dataset: {str(e)}")
+    processed_df = process_uploaded_bytes(file_bytes, filename)
+    df_master = processed_df
+    logger.info(f"Custom dataset uploaded: '{filename}' with {len(df_master)} records.")
+    return {
+        "status": "success",
+        "message": f"Dataset '{filename}' successfully validated and activated.",
+        "filename": filename,
+        "records_loaded": len(df_master),
+        "columns_count": len(df_master.columns)
+    }
 
 
-@app.post("/api/dataset/reset")
-def reset_dataset():
+def reset_dataset() -> Dict[str, Any]:
     """Resets active dataset back to the standard default portfolio dataset."""
     global df_master
-    try:
-        df_master = reset_custom_dataset()
-        logger.info("Dataset reset to default master portfolio.")
-        return {
-            "status": "success",
-            "message": "Reset to default claims dataset successfully.",
-            "records_loaded": len(df_master)
-        }
-    except Exception as e:
-        logger.error(f"Failed to reset dataset: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to reset dataset: {str(e)}")
+    df_master = reset_custom_dataset()
+    logger.info("Dataset reset to default master portfolio.")
+    return {
+        "status": "success",
+        "message": "Reset to default claims dataset successfully.",
+        "records_loaded": len(df_master)
+    }
 
 
 def run_server():
-    """Starts the Uvicorn application server."""
-    uvicorn.run("backend.server:app", host=SERVER_HOST, port=SERVER_PORT, reload=False)
+    """Launches the Streamlit application."""
+    import subprocess
+    import sys
+    from .config import PROJECT_ROOT
+    frontend_path = os.path.join(PROJECT_ROOT, "frontend", "app.py")
+    subprocess.run([sys.executable, "-m", "streamlit", "run", frontend_path, "--server.port", "8501"], cwd=PROJECT_ROOT)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """
 Claims Analytics Frontend Application
 Streamlit user interface with minimalist design, clean top navbar,
-and direct integration with the FastAPI backend service.
+and direct integration with Streamlit domain services.
 Zero emojis, zero stickers, and zero machine learning dependencies.
 """
 
