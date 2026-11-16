@@ -26,6 +26,10 @@ from frontend.api_client import (
     fetch_severities,
     fetch_correlation,
     fetch_audits,
+    get_client_ip,
+    record_viewer,
+    fetch_viewer_stats,
+    get_dataset_info,
     _get_local_df
 )
 from frontend.views import (
@@ -34,6 +38,7 @@ from frontend.views import (
     render_audits_view,
     render_powerbi_view,
     render_strategy_view,
+    render_upload_dataset_view,
     plot_correlation_matrix,
     plot_claim_distributions,
     compute_claim_financial_summary
@@ -52,6 +57,25 @@ st.markdown(get_minimal_css(), unsafe_allow_html=True)
 # Check Backend API Connectivity
 is_backend_online, backend_meta = check_backend_status()
 
+# Resolve Client IP and track viewer
+client_ip = get_client_ip()
+
+# Record once per session; update if client IP changes
+if "session_viewer_logged" not in st.session_state or st.session_state.get("client_ip") != client_ip:
+    viewer_stats = record_viewer(client_ip)
+    st.session_state["session_viewer_logged"] = True
+    st.session_state["client_ip"] = client_ip
+    st.session_state["viewer_stats"] = viewer_stats
+else:
+    viewer_stats = fetch_viewer_stats()
+    st.session_state["viewer_stats"] = viewer_stats
+
+total_viewers = viewer_stats.get("total_viewers", 1)
+
+# Active Dataset Information
+dataset_info = get_dataset_info()
+ds_badge_text = f"{dataset_info['dataset_name']} ({dataset_info['record_count']:,} records)"
+
 # Top Navbar Header
 status_badge_html = (
     '<span class="status-badge badge-online">Backend API: Online (Port 8000)</span>'
@@ -65,7 +89,9 @@ st.markdown(f"""
         <div class="navbar-brand">Claims Intelligence Analytics System</div>
         <div class="navbar-subtitle">B.Tech Internship Project: End-to-End Analytics, Audits & Power BI Readiness</div>
     </div>
-    <div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <span class="status-badge badge-dataset" title="Currently active dataset">{ds_badge_text}</span>
+        <span class="status-badge badge-viewers" title="Total unique dashboard viewers">Total Viewers: {total_viewers}</span>
         {status_badge_html}
     </div>
 </div>
@@ -77,7 +103,8 @@ nav_tabs = [
     "Claims Analysis",
     "Operational Audits",
     "Power BI & DAX",
-    "Strategic Insights"
+    "Strategic Insights",
+    "Upload Dataset"
 ]
 
 selected_view = st.radio(
@@ -134,3 +161,6 @@ elif selected_view == "Power BI & DAX":
 
 elif selected_view == "Strategic Insights":
     render_strategy_view()
+
+elif selected_view == "Upload Dataset":
+    render_upload_dataset_view(dataset_info)

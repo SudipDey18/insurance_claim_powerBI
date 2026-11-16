@@ -142,6 +142,16 @@ def get_minimal_css() -> str:
             color: #92400E;
             border: 1px solid #FDE68A;
         }
+        .badge-viewers {
+            background-color: #EFF6FF;
+            color: #1E40AF;
+            border: 1px solid #BFDBFE;
+        }
+        .badge-dataset {
+            background-color: #F1F5F9;
+            color: #334155;
+            border: 1px solid #CBD5E1;
+        }
 
         /* Radio buttons horizontal styling for Navbar */
         div[data-testid="stHorizontalBlock"] {

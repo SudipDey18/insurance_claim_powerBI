@@ -580,3 +580,140 @@ def render_strategy_view():
         - **Module 8: Power BI Data Readiness** — Cleaned CSV dataset and standard DAX measures guide.
         - **Module 9: Strategic Business Insights** — Executive recommendations and operational triage rules.
         """)
+
+
+def render_upload_dataset_view(dataset_info: Dict[str, Any]):
+    """Renders the dataset upload and sample format download interface."""
+    st.markdown('<div class="view-title">Dataset Ingestion & Management</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="view-description">Upload your own claims dataset (CSV or Excel) with matching column schema, or download pre-formatted sample templates.</div>',
+        unsafe_allow_html=True
+    )
+
+    # 1. Active Dataset Status Card
+    is_custom = dataset_info.get("is_custom", False)
+    rec_count = dataset_info.get("record_count", 0)
+    col_count = dataset_info.get("column_count", 0)
+    ds_name = dataset_info.get("dataset_name", "Standard Portfolio")
+
+    st.markdown('<div class="section-title">Current Active Dataset</div>', unsafe_allow_html=True)
+    stat_col1, stat_col2, stat_col3, stat_col4 = st.columns([1.5, 1, 1, 1.2])
+
+    with stat_col1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Dataset Source</div>
+            <div class="metric-value" style="font-size: 1.05rem;">{ds_name}</div>
+            <div class="metric-caption">{"Custom upload active" if is_custom else "Production default"}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with stat_col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Total Observations</div>
+            <div class="metric-value">{rec_count:,}</div>
+            <div class="metric-caption">Claims records</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with stat_col3:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Active Features</div>
+            <div class="metric-value">{col_count}</div>
+            <div class="metric-caption">Raw & derived fields</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with stat_col4:
+        st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+        if is_custom:
+            if st.button("Reset to Default Dataset", use_container_width=True, type="secondary"):
+                from frontend.api_client import reset_active_dataset
+                reset_active_dataset()
+                st.success("Reset to default dataset successfully!")
+                st.rerun()
+        else:
+            st.info("Default master dataset is currently active.")
+
+    st.markdown("<hr style='margin: 16px 0; border: 0; border-top: 1px solid #E2E8F0;'>", unsafe_allow_html=True)
+
+    # 2. Download Sample Format Section
+    st.markdown('<div class="section-title">1. Download Sample Format (CSV / Excel)</div>', unsafe_allow_html=True)
+    st.markdown("""
+    Ensure your dataset contains the exact same 39 column headers before uploading.
+    Download one of the standardized template files below to inspect the expected column names, formats, and sample values:
+    """)
+
+    from frontend.api_client import fetch_sample_template, upload_dataset_file, get_required_columns
+    csv_bytes, csv_mime, csv_fname = fetch_sample_template("csv")
+    excel_bytes, excel_mime, excel_fname = fetch_sample_template("excel")
+
+    d_col1, d_col2 = st.columns(2)
+    with d_col1:
+        st.download_button(
+            label="Download Sample Format (CSV)",
+            data=csv_bytes,
+            file_name=csv_fname,
+            mime=csv_mime,
+            use_container_width=True
+        )
+        st.caption("Standard comma-separated format (.csv) compatible with Excel, Python, and databases.")
+
+    with d_col2:
+        st.download_button(
+            label="Download Sample Format (Excel .xlsx)",
+            data=excel_bytes,
+            file_name=excel_fname,
+            mime=excel_mime,
+            use_container_width=True
+        )
+        st.caption("Microsoft Excel workbook (.xlsx) format with pre-formatted column headers.")
+
+    st.markdown("<hr style='margin: 16px 0; border: 0; border-top: 1px solid #E2E8F0;'>", unsafe_allow_html=True)
+
+    # 3. Upload Dataset Section
+    st.markdown('<div class="section-title">2. Upload Your Custom Dataset</div>', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader(
+        "Select a CSV or Excel file to upload",
+        type=["csv", "xlsx", "xls"],
+        help="The file must contain the exact 39 column headers found in the sample template."
+    )
+
+    if uploaded_file is not None:
+        file_bytes = uploaded_file.getvalue()
+        with st.spinner("Validating column schema and engineering features..."):
+            result = upload_dataset_file(file_bytes, uploaded_file.name)
+
+        if result.get("status") == "success":
+            st.success(f"Success! {result.get('message')} ({result.get('records_loaded', 0):,} records loaded). All dashboard tabs are now using this dataset.")
+            from frontend.api_client import _get_local_df
+            preview_df = _get_local_df(force_reload=True).head(5)
+            st.markdown("<strong>Active Dataset Preview (Top 5 rows):</strong>", unsafe_allow_html=True)
+            st.dataframe(preview_df, use_container_width=True)
+            if st.button("Apply and Refresh Dashboard Views", type="primary"):
+                st.rerun()
+        else:
+            st.error(f"Validation Failed: {result.get('message')}")
+            st.markdown("""
+            > [!TIP]
+            > Ensure your file has the exact column names matching the sample template. You can download the sample CSV or Excel format above to compare.
+            """)
+
+    # 4. Required Schema Reference
+    with st.expander("Required Column Fields Reference (39 fields)", expanded=False):
+        req_cols = get_required_columns()
+        col_table = []
+        for idx, col in enumerate(req_cols, 1):
+            category = (
+                "Policy Details" if col.startswith("policy_") or col in ["umbrella_limit", "months_as_customer"] else
+                "Insured Demographics" if col.startswith("insured_") or col in ["age", "capital-gains", "capital-loss"] else
+                "Incident Information" if col.startswith("incident_") or col in ["collision_type", "authorities_contacted", "property_damage", "bodily_injuries", "witnesses", "police_report_available", "number_of_vehicles_involved"] else
+                "Claim Financials" if "claim" in col else
+                "Vehicle Details" if col.startswith("auto_") else
+                "Fraud Indicator"
+            )
+            col_table.append({"#": idx, "Field Name": col, "Category": category})
+        st.dataframe(pd.DataFrame(col_table), use_container_width=True, hide_index=True)
+

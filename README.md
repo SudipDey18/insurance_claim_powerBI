@@ -13,6 +13,7 @@ executive decision-making.
 - Identify fraud rates across incident severity tiers.
 - Break down claim costs into vehicle, injury, and property components.
 - Understand monthly and 24-hour incident trends.
+- Track and display total dashboard viewers counted by client IP address.
 - Run data-quality and anomaly audits (additivity, timeline, IQR).
 - Provide Power BI / DAX readiness and strategic business insights.
 
@@ -77,6 +78,22 @@ streamlit run frontend\app.py --server.port 8501
 5. Open the dashboard in your browser at `http://localhost:8501`.
 
 > Alternatively, use the launcher: `python run.py backend` and `python run.py frontend`.
+
+## Dataset Upload & Sample Templates
+The dashboard features an interactive dataset ingestion pipeline:
+- **Download Sample Formats**: Users can download pre-formatted sample datasets in either **CSV (`.csv`)** or **Excel (`.xlsx`)** format directly from the **Upload Dataset** navigation tab.
+- **Strict Column Schema Validation**: Uploaded files must match the 39 canonical raw insurance claim attributes. If any fields are missing, the system detects and lists each missing column name.
+- **Automatic Domain Feature Engineering**: Successfully validated uploads are automatically processed through the feature engineering pipeline (calculating tenure, vehicle age, policy age, loss ratios, periods of day, etc.).
+- **Live Dashboard Updates**: All views (Overview, Claims Analysis, Operational Audits, Power BI readiness) immediately re-compute against the newly loaded dataset.
+- **One-Click Reset**: Easily restore the default 1,000-claim production portfolio anytime via the **Reset to Default Dataset** option.
+
+## Viewer Tracking & Backend Logging
+The system tracks viewer traffic with backend audit logging:
+- **Total Viewers in Front End**: Displays aggregate `Total Viewers: <count>` in the top header navbar and Executive Overview, counted uniquely based on client IP addresses.
+- **Privacy-Preserving UI**: Client IP addresses and access audits are strictly hidden from the frontend user interface.
+- **Backend Audit Log**: Every connection and IP audit is logged into `backend/logs/viewer_audit.log` (recording client IP, timestamp, visit status, unique viewers count, and IP visit frequency).
+- **Application Logging**: General server requests, startup events, and health metrics are logged to `backend/logs/server.log`.
+- **REST Endpoints**: The backend provides `GET /api/viewers` and `POST /api/viewers/record` with thread-safe persistence in `dataset/viewers.json` and offline fallback support.
 
 ## Project Outcome
 The project provides insights into claims cost distribution, fraud
