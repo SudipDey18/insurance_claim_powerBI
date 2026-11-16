@@ -59,7 +59,7 @@ Install the required libraries:
 pip install -r requirements.txt
 ```
 
-## How to Run
+## How to Run Locally
 
 1. Clone or open the repository.
 2. Install the required libraries:
@@ -68,15 +68,28 @@ pip install -r requirements.txt
 pip install -r requirements.txt
 ```
 
-3. Launch the Streamlit dashboard:
+3. Launch the dashboard:
 
 ```bash
-streamlit run frontend/app.py --server.port 8501
+streamlit run app.py
 ```
 
 > Alternatively, run via the launcher: `python run.py`.
 
 4. Open the dashboard in your browser at `http://localhost:8501`.
+
+## Streamlit Community Cloud Deployment
+
+This project is pre-configured for one-click hosting on [Streamlit Community Cloud](https://share.streamlit.io):
+
+1. Sign in to **Streamlit Community Cloud** with your GitHub account.
+2. Click **"New app"** and configure:
+   - **Repository**: `SudipDey18/insurance_claim_powerBI`
+   - **Branch**: `backend-converted-streamlit`
+   - **Main file path**: `app.py` *(or `streamlit_app.py`)*
+3. Click **"Deploy!"**
+   - Streamlit Cloud installs packages automatically from `requirements.txt`.
+   - The entire dashboard, backend data services, IP viewer tracking, and dataset uploads launch immediately in a single run.
 
 ## Dataset Upload & Sample Templates
 The dashboard features an interactive dataset ingestion pipeline:

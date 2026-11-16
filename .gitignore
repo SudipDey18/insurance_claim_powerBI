@@ -38,6 +38,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Caches
+.matplotlib_cache/
+
 # Environment variables
 .env
 DOCUMENTATION.md
