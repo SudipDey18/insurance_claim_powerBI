@@ -33,7 +33,10 @@ from frontend.views import (
     render_claims_analysis_view,
     render_audits_view,
     render_powerbi_view,
-    render_strategy_view
+    render_strategy_view,
+    plot_correlation_matrix,
+    plot_claim_distributions,
+    compute_claim_financial_summary
 )
 
 # Page Configuration
@@ -118,7 +121,8 @@ elif selected_view == "Claims Analysis":
     severities_res = fetch_severities(sel_state, sel_month)
     trends_res = fetch_trends(sel_state, sel_severity, sel_fraud)
     corr_res = fetch_correlation()
-    render_claims_analysis_view(severities_res, trends_res, corr_res)
+    df_sample = _get_local_df()
+    render_claims_analysis_view(severities_res, trends_res, corr_res, df=df_sample)
 
 elif selected_view == "Operational Audits":
     audits_res = fetch_audits()
