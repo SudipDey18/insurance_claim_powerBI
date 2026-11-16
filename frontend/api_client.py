@@ -1,14 +1,14 @@
 """
-API Client Module
-Communicates with the FastAPI backend service via HTTP requests.
-Implements graceful local fallbacks if the server is offline.
+Service Controller Module
+Directly connects Streamlit frontend components to backend operational,
+analytics, and audit domain services in-process.
+Streamlit-native architecture: zero HTTP overhead and zero external server dependencies.
 """
 
 import os
-from typing import Dict, Any, Tuple, Optional
-import requests
+from typing import Dict, Any, Tuple, Optional, List
+import pandas as pd
 
-from backend.config import BACKEND_URL
 from backend.data_service import (
     load_dataset,
     filter_dataset,
@@ -27,38 +27,32 @@ from backend.analytics_service import (
 )
 from backend.audit_service import run_full_anomaly_audit
 from backend.viewer_service import record_viewer_visit, get_viewer_stats
+from backend.config import UPLOADED_DATA_FILE
 
-# Local cache reference for fallback mode
+# In-memory local cache reference
 _local_df = None
 
 
-def _get_local_df(force_reload: bool = False):
+def _get_local_df(force_reload: bool = False) -> pd.DataFrame:
+    """Retrieves or refreshes the cached master DataFrame."""
     global _local_df
     if _local_df is None or force_reload:
         _local_df = load_dataset()
     return _local_df
 
 
-def check_backend_status() -> Tuple[bool, Optional[Dict[str, Any]]]:
-    """Tests connectivity to the FastAPI backend service."""
-    try:
-        response = requests.get(f"{BACKEND_URL}/health", timeout=0.8)
-        if response.status_code == 200:
-            return True, response.json()
-    except Exception:
-        pass
-    return False, None
+def check_backend_status() -> Tuple[bool, Dict[str, Any]]:
+    """Returns engine health and dataset status for the Streamlit application."""
+    df = _get_local_df()
+    return True, {
+        "status": "healthy",
+        "engine": "Streamlit Core",
+        "records_loaded": len(df) if df is not None else 0
+    }
 
 
 def fetch_filter_options() -> Dict[str, Any]:
-    """Retrieves unique filter options from backend API or local dataset."""
-    try:
-        response = requests.get(f"{BACKEND_URL}/api/filter-options", timeout=1.0)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
+    """Retrieves unique filter options directly from the active dataset."""
     df = _get_local_df()
     return {
         "policy_states": ["All"] + sorted(df['policy_state'].dropna().unique().tolist()),
@@ -74,20 +68,7 @@ def fetch_kpis(
     fraud_status: Optional[str] = None,
     incident_month: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Retrieves calculated KPIs from backend API or local fallback."""
-    params = {}
-    if policy_state and policy_state != "All": params['policy_state'] = policy_state
-    if incident_severity and incident_severity != "All": params['incident_severity'] = incident_severity
-    if fraud_status and fraud_status != "All": params['fraud_status'] = fraud_status
-    if incident_month and incident_month != "All": params['incident_month'] = incident_month
-
-    try:
-        response = requests.get(f"{BACKEND_URL}/api/kpis", params=params, timeout=1.5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
+    """Calculates executive KPIs based on active filter parameters."""
     df = _get_local_df()
     filtered = filter_dataset(df, policy_state, incident_severity, fraud_status, incident_month)
     return compute_executive_kpis(filtered)
@@ -99,20 +80,7 @@ def fetch_breakdown(
     fraud_status: Optional[str] = None,
     incident_month: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Retrieves component breakdown from backend API or local fallback."""
-    params = {}
-    if policy_state and policy_state != "All": params['policy_state'] = policy_state
-    if incident_severity and incident_severity != "All": params['incident_severity'] = incident_severity
-    if fraud_status and fraud_status != "All": params['fraud_status'] = fraud_status
-    if incident_month and incident_month != "All": params['incident_month'] = incident_month
-
-    try:
-        response = requests.get(f"{BACKEND_URL}/api/breakdown", params=params, timeout=1.5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
+    """Calculates financial payout allocation across vehicle, injury, and property shares."""
     df = _get_local_df()
     filtered = filter_dataset(df, policy_state, incident_severity, fraud_status, incident_month)
     return compute_component_breakdown(filtered)
@@ -123,19 +91,7 @@ def fetch_trends(
     incident_severity: Optional[str] = None,
     fraud_status: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Retrieves temporal dynamics from backend API or local fallback."""
-    params = {}
-    if policy_state and policy_state != "All": params['policy_state'] = policy_state
-    if incident_severity and incident_severity != "All": params['incident_severity'] = incident_severity
-    if fraud_status and fraud_status != "All": params['fraud_status'] = fraud_status
-
-    try:
-        response = requests.get(f"{BACKEND_URL}/api/trends", params=params, timeout=1.5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
+    """Calculates monthly volume and 24-hour incident occurrence dynamics."""
     df = _get_local_df()
     filtered = filter_dataset(df, policy_state, incident_severity, fraud_status)
     return compute_temporal_trends(filtered)
@@ -144,46 +100,21 @@ def fetch_trends(
 def fetch_severities(
     policy_state: Optional[str] = None,
     incident_month: Optional[str] = None
-):
-    """Retrieves severity tier distributions from backend API or local fallback."""
-    params = {}
-    if policy_state and policy_state != "All": params['policy_state'] = policy_state
-    if incident_month and incident_month != "All": params['incident_month'] = incident_month
-
-    try:
-        response = requests.get(f"{BACKEND_URL}/api/severities", params=params, timeout=1.5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
+) -> Dict[str, Any]:
+    """Calculates claim volume, total outlay, and fraud rate per incident severity tier."""
     df = _get_local_df()
     filtered = filter_dataset(df, policy_state=policy_state, incident_month=incident_month)
     return compute_severity_metrics(filtered)
 
 
-def fetch_correlation():
-    """Retrieves numerical correlation matrix."""
-    try:
-        response = requests.get(f"{BACKEND_URL}/api/correlation", timeout=1.5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
+def fetch_correlation() -> Dict[str, Any]:
+    """Calculates Pearson correlation matrix for numerical attributes."""
     df = _get_local_df()
     return compute_correlation_matrix(df)
 
 
 def fetch_audits() -> Dict[str, Any]:
-    """Retrieves anomaly audit reports from backend API or local fallback."""
-    try:
-        response = requests.get(f"{BACKEND_URL}/api/audits", timeout=1.5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
+    """Calculates Module 6 operational anomaly and data quality audits."""
     df = _get_local_df()
     return run_full_anomaly_audit(df)
 
@@ -195,13 +126,13 @@ def get_client_ip() -> str:
     """
     try:
         import streamlit as st
-        # 1. Query parameters override (useful for testing or simulation e.g. ?client_ip=192.168.1.10)
+        # 1. Query parameters override (useful for testing e.g. ?client_ip=192.168.1.10)
         if hasattr(st, "query_params") and "client_ip" in st.query_params:
             param_ip = st.query_params.get("client_ip")
             if param_ip:
                 return str(param_ip).strip()
 
-        # 2. Check Streamlit context headers (e.g. reverse proxy, ngrok, cloud deploy)
+        # 2. Check Streamlit context headers (e.g. reverse proxy, cloud deployment)
         if hasattr(st, "context") and hasattr(st.context, "headers") and st.context.headers:
             headers = st.context.headers
             for key in ["x-forwarded-for", "x-real-ip", "cf-connecting-ip", "client-ip", "x-client-ip"]:
@@ -234,73 +165,38 @@ def get_client_ip() -> str:
 
 
 def record_viewer(ip: Optional[str] = None) -> Dict[str, Any]:
-    """Records a viewer visit by IP via backend API or local fallback."""
+    """Records a viewer visit by IP and logs to backend/logs/viewer_audit.log."""
     if not ip:
         ip = get_client_ip()
-
-    try:
-        response = requests.post(f"{BACKEND_URL}/api/viewers/record", json={"ip": ip}, timeout=1.5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
     return record_viewer_visit(ip)
 
 
 def fetch_viewer_stats() -> Dict[str, Any]:
-    """Retrieves viewer statistics via backend API or local fallback."""
-    try:
-        response = requests.get(f"{BACKEND_URL}/api/viewers", timeout=1.5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
+    """Retrieves current unique viewer counts."""
     return get_viewer_stats()
 
 
 def upload_dataset_file(file_bytes: bytes, filename: str) -> Dict[str, Any]:
-    """Uploads and activates a custom dataset via backend API or local fallback."""
+    """Validates and activates a custom dataset file in-process."""
     global _local_df
-    try:
-        files = {"file": (filename, file_bytes)}
-        response = requests.post(f"{BACKEND_URL}/api/dataset/upload", files=files, timeout=6.0)
-        if response.status_code == 200:
-            _local_df = _get_local_df(force_reload=True)
-            return response.json()
-        elif response.status_code in (400, 422):
-            detail = response.json().get("detail", "Validation failed.")
-            return {"status": "error", "message": detail}
-    except Exception:
-        pass
-
-    # Local fallback
     try:
         processed = process_uploaded_bytes(file_bytes, filename)
         _local_df = processed
         return {
             "status": "success",
-            "message": f"Dataset '{filename}' successfully validated and loaded locally.",
+            "message": f"Dataset '{filename}' successfully validated and activated.",
             "records_loaded": len(processed),
             "columns_count": len(processed.columns)
         }
+    except ValueError as ve:
+        return {"status": "error", "message": str(ve)}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": f"Failed to process dataset: {str(e)}"}
 
 
 def reset_active_dataset() -> Dict[str, Any]:
-    """Resets to default dataset via backend API or local fallback."""
+    """Resets the active dataset back to the standard master portfolio."""
     global _local_df
-    try:
-        response = requests.post(f"{BACKEND_URL}/api/dataset/reset", timeout=3.0)
-        if response.status_code == 200:
-            _local_df = _get_local_df(force_reload=True)
-            return response.json()
-    except Exception:
-        pass
-
-    # Local fallback
     try:
         _local_df = reset_custom_dataset()
         return {
@@ -313,23 +209,15 @@ def reset_active_dataset() -> Dict[str, Any]:
 
 
 def get_dataset_info() -> Dict[str, Any]:
-    """Retrieves metadata on active dataset."""
-    try:
-        response = requests.get(f"{BACKEND_URL}/api/dataset/status", timeout=1.5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-
+    """Retrieves metadata on the currently active dataset."""
     df = _get_local_df()
-    from backend.config import UPLOADED_DATA_FILE
     is_custom = os.path.exists(UPLOADED_DATA_FILE) and os.path.getsize(UPLOADED_DATA_FILE) > 0
     return {
         "status": "ready",
         "is_custom": is_custom,
         "dataset_name": "Custom Uploaded Dataset" if is_custom else "Standard Production Portfolio",
-        "record_count": len(df),
-        "column_count": len(df.columns)
+        "record_count": len(df) if df is not None else 0,
+        "column_count": len(df.columns) if df is not None else 0
     }
 
 
@@ -341,5 +229,3 @@ def fetch_sample_template(format_type: str = "csv") -> Tuple[bytes, str, str]:
 def get_required_columns() -> List[str]:
     """Returns list of required columns."""
     return REQUIRED_COLUMNS
-
-

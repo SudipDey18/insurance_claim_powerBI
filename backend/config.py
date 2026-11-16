@@ -17,7 +17,6 @@ LOGS_DIR = os.path.join(CURRENT_DIR, "logs")
 VIEWER_LOG_FILE = os.path.join(LOGS_DIR, "viewer_audit.log")
 SERVER_LOG_FILE = os.path.join(LOGS_DIR, "server.log")
 
-# Server configuration
+# Server configuration (Streamlit Standalone)
 SERVER_HOST = "0.0.0.0"
-SERVER_PORT = 8000
-BACKEND_URL = f"http://127.0.0.1:{SERVER_PORT}"
+SERVER_PORT = 8501

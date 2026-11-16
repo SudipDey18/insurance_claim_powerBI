@@ -3,7 +3,4 @@ matplotlib
 seaborn
 numpy
 streamlit
-requests
-fastapi
-uvicorn
 openpyxl

@@ -77,11 +77,7 @@ dataset_info = get_dataset_info()
 ds_badge_text = f"{dataset_info['dataset_name']} ({dataset_info['record_count']:,} records)"
 
 # Top Navbar Header
-status_badge_html = (
-    '<span class="status-badge badge-online">Backend API: Online (Port 8000)</span>'
-    if is_backend_online else
-    '<span class="status-badge badge-offline">Backend API: Local Fallback</span>'
-)
+status_badge_html = '<span class="status-badge badge-online">Engine: Streamlit Core</span>'
 
 st.markdown(f"""
 <div class="navbar-container">

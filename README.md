@@ -1,8 +1,9 @@
 # Claims Intelligence Analytics System
 
 ## Project Overview
-This project analyzes insurance claims data using Python, FastAPI,
-and Streamlit, with Power BI readiness.
+This project analyzes insurance claims data using Python and Streamlit,
+with Power BI readiness. All data services, operational audits, and KPI
+analytics are directly integrated into Streamlit for a fast, standalone experience.
 
 The objective is to understand claims cost patterns, fraud behaviour,
 operational anomalies, and overall portfolio performance to support
@@ -23,7 +24,6 @@ executive decision-making.
 - NumPy
 - Matplotlib
 - Seaborn
-- FastAPI
 - Streamlit
 - Power BI (DAX)
 
@@ -61,23 +61,22 @@ pip install -r requirements.txt
 
 ## How to Run
 
-1. Clone the repository.
-2. Open the project folder.
-3. Start the backend server:
+1. Clone or open the repository.
+2. Install the required libraries:
 
 ```bash
-python -m uvicorn backend.server:app --host 0.0.0.0 --port 8000
+pip install -r requirements.txt
 ```
 
-4. Start the frontend dashboard:
+3. Launch the Streamlit dashboard:
 
 ```bash
-streamlit run frontend\app.py --server.port 8501
+streamlit run frontend/app.py --server.port 8501
 ```
 
-5. Open the dashboard in your browser at `http://localhost:8501`.
+> Alternatively, run via the launcher: `python run.py`.
 
-> Alternatively, use the launcher: `python run.py backend` and `python run.py frontend`.
+4. Open the dashboard in your browser at `http://localhost:8501`.
 
 ## Dataset Upload & Sample Templates
 The dashboard features an interactive dataset ingestion pipeline:
@@ -93,7 +92,7 @@ The system tracks viewer traffic with backend audit logging:
 - **Privacy-Preserving UI**: Client IP addresses and access audits are strictly hidden from the frontend user interface.
 - **Backend Audit Log**: Every connection and IP audit is logged into `backend/logs/viewer_audit.log` (recording client IP, timestamp, visit status, unique viewers count, and IP visit frequency).
 - **Application Logging**: General server requests, startup events, and health metrics are logged to `backend/logs/server.log`.
-- **REST Endpoints**: The backend provides `GET /api/viewers` and `POST /api/viewers/record` with thread-safe persistence in `dataset/viewers.json` and offline fallback support.
+- **Streamlit-Native Services**: Domain services (KPI analytics, breakdown allocations, temporal trends, audits, and dataset processing) execute directly in-process with thread-safe persistence in `dataset/viewers.json`.
 
 ## Project Outcome
 The project provides insights into claims cost distribution, fraud
