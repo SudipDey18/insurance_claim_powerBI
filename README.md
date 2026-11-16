@@ -101,7 +101,10 @@ patterns, operational anomalies, and portfolio performance, along with
 a Power BI / DAX readiness guide for further reporting.
 
 ## Author
-Your Name
+Sudip Dey
+Sneha Sadhu
+Shreya Pal
+Dipayan Sardar
 
 ## License
 This project is for educational purposes.
